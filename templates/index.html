@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ruleta - Captura</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px;
+            background: #1a1a2e;
+            color: white;
+        }
+        h1 { margin-bottom: 20px; }
+        video, canvas {
+            width: 100%;
+            max-width: 400px;
+            border-radius: 10px;
+            margin: 10px 0;
+        }
+        button {
+            margin: 10px;
+            padding: 15px 30px;
+            font-size: 18px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        #btn-capturar  { background: #e94560; color: white; }
+        #btn-enviar    { background: #0f3460; color: white; display: none; }
+        #estado        { margin-top: 15px; font-size: 16px; }
+    </style>
+</head>
+<body>
+    <h1>📷 Captura el número</h1>
+
+    <!-- Cámara en vivo -->
+    <video id="video" autoplay playsinline></video>
+
+    <!-- Canvas oculto para capturar el frame -->
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <!-- Preview de la foto tomada -->
+    <img id="preview" style="display:none; max-width:400px; border-radius:10px;" />
+
+    <button id="btn-capturar">📸 Tomar foto</button>
+    <button id="btn-enviar">✅ Enviar número</button>
+
+    <p id="estado"></p>
+
+    <script>
+        const video      = document.getElementById('video');
+        const canvas     = document.getElementById('canvas');
+        const preview    = document.getElementById('preview');
+        const btnCaptura = document.getElementById('btn-capturar');
+        const btnEnviar  = document.getElementById('btn-enviar');
+        const estado     = document.getElementById('estado');
+
+        let imagenBase64 = null;
+
+        // ── Iniciar cámara trasera ──────────────────────────────
+        navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment' }  // cámara trasera
+        })
+        .then(stream => { video.srcObject = stream; })
+        .catch(err  => { estado.textContent = 'Error al acceder a la cámara: ' + err; });
+
+        // ── Tomar foto ─────────────────────────────────────────
+        btnCaptura.addEventListener('click', () => {
+            canvas.width  = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            // Dibuja el frame actual en el canvas
+            canvas.getContext('2d').drawImage(video, 0, 0);
+
+            // Guarda como base64
+            imagenBase64 = canvas.toDataURL('image/jpeg', 0.9);
+
+            // Muestra preview
+            preview.src     = imagenBase64;
+            preview.style.display = 'block';
+
+            // Muestra botón enviar
+            btnEnviar.style.display = 'inline-block';
+            estado.textContent = 'Foto tomada. ¿La envías?';
+        });
+
+        // ── Enviar al servidor Flask ────────────────────────────
+        btnEnviar.addEventListener('click', async () => {
+            if (!imagenBase64) return;
+
+            estado.textContent = 'Enviando...';
+            btnEnviar.disabled = true;
+
+            try {
+                const response = await fetch('/procesar_imagen', {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify({ imagen: imagenBase64 })
+                });
+
+                const data = await response.json();
+                estado.textContent = '✅ ' + data.resultado;
+
+                // Resetea para la próxima tirada
+                preview.style.display   = 'none';
+                btnEnviar.style.display = 'none';
+                btnEnviar.disabled      = false;
+                imagenBase64            = null;
+
+            } catch (err) {
+                estado.textContent = '❌ Error al enviar: ' + err;
+                btnEnviar.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
